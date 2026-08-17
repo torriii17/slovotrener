@@ -1,0 +1,48 @@
+name: Add card audio
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/add-card-audio.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Add pronunciation to flash cards
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('index.html')
+          s = p.read_text(encoding='utf-8')
+          if 'id="flashSpeak"' in s:
+              print('Card audio already present')
+              raise SystemExit(0)
+
+          css = '.card-speak{border:1px solid var(--line);background:#fff;color:var(--dark);border-radius:999px;padding:9px 13px;font-weight:800;margin-bottom:18px;box-shadow:0 5px 16px rgba(17,24,39,.06)}.card-speak:active{transform:scale(.98)}\\n'
+          if '.card-speak{' not in s:
+              s = s.replace('@media(max-width:560px)', css + '@media(max-width:560px)', 1)
+
+          start = s.index('function flashQ(w){')
+          end = s.index('function listenQ(w){', start)
+          new_flash = '''function flashQ(w){$('qtype').textContent='Карточка';$('questionBody').innerHTML=`<div class="flash-card" id="flashCard"><button class="card-speak" id="flashSpeak" type="button">🔊 Произнести</button><div class="flash-main">${esc(w.word)}</div><div class="flash-tip">Нажми на карточку, чтобы увидеть перевод</div></div>`;$('flashSpeak').onclick=e=>{e.stopPropagation();speak(w.word)};let open=false;$('flashCard').onclick=()=>{if(open)return;open=true;$('flashCard').innerHTML=`<button class="card-speak" id="flashSpeakOpen" type="button">🔊 Произнести</button><div class="flash-main">${esc(w.word)}</div><div class="flash-tr">${esc(w.translation)}</div>${w.example?`<div class="flash-tip">${esc(w.example)}</div>`:''}`;$('flashSpeakOpen').onclick=e=>{e.stopPropagation();speak(w.word)};$('answer').innerHTML='<div class="actions" style="justify-content:center"><button class="btn bad" id="noKnow">Не помню</button><button class="btn good" id="know">Знаю</button></div>';$('noKnow').onclick=()=>{record(false);next()};$('know').onclick=()=>{record(true);next()}}}\n'''
+          s = s[:start] + new_flash + s[end:]
+          p.write_text(s, encoding='utf-8')
+          PY
+      - name: Commit update
+        run: |
+          if git diff --quiet; then
+            echo "No changes"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git commit -m "Add pronunciation to flash cards"
+          git push
